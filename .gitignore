@@ -12,3 +12,4 @@
 Build/
 Build2/
 /*.zip
+/x64/Debug

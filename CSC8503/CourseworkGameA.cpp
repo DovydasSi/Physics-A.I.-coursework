@@ -99,7 +99,7 @@ void CourseworkGameA::UpdateGame(float dt)
 			Debug::Print("[LMB] Grapple", { 45, 90 });
 		}
 
-		if (playerObject->ShouldReset() || world->GetScore() == colectables.size() || 
+		if (playerObject->ShouldReset() /* || world->GetScore() == colectables.size()*/ ||
 			(gametype == TimeTrial && timer <= 0))
 		{
 			EndGame();
@@ -177,7 +177,7 @@ void CourseworkGameA::InitWorld()
 	AddGrappleToWorld({ 20.0f, -6.0f, -245.0 }, { 0.50f, 0.50f, 0.50f }, 20.0f);
 
 	Vector3 labyrinthPos = { -200, 0, -200 };
-	AddStructureFromFile(labyrinthPos, "GameMaze.txt");
+	AddStructureFromFile(labyrinthPos, "GameMaze1.txt");
 
 	labyrinthPos = { -100.0f, 0.0f, -400.0f };
 	AddStructureFromFile(labyrinthPos, "GameMaze2.txt");
@@ -522,21 +522,35 @@ GameObject* CourseworkGameA::AddGrappleToWorld(const Vector3& position, Vector3 
 void CourseworkGameA::AddStructureFromFile(const Vector3& position, const std::string filename)
 {
 	std::ifstream infile(Assets::DATADIR + filename);
-	float nodeSize, gridWidth, gridHeight;
+	int nodeSize, gridWidth, gridHeight;
 
 	infile >> nodeSize;
 	infile >> gridWidth;
 	infile >> gridHeight;
 
+	std::vector<char> grid;
+	std::vector<char> grid_backup = grid;
+
+	for (int y = 0; y < gridHeight; ++y) {
+		for (int x = 0; x < gridWidth; ++x) {
+			char type = '.';
+			infile >> type;
+			grid.push_back(type);
+		}
+	}
+
+	infile.close();
+
 	// Trying to fuse horizontal walls into one to save on creating too many GameObjects
 	float wall_counter = 1.0f;
+	int column_counter = 1.0f;
 	Vector3 old_pos;
 
 	for (int y = 0; y < gridHeight; ++y) {
 		for (int x = 0; x < gridWidth; ++x) {
+			int index = y * gridWidth + x;
+			char type = grid[index];
 
-			char type = 0;
-			infile >> type;
 			Vector3 pos = Vector3((float)(x * nodeSize), -13, (float)(y * nodeSize));
 
 			if (wall_counter > 1)
@@ -554,15 +568,34 @@ void CourseworkGameA::AddStructureFromFile(const Vector3& position, const std::s
 				wall_counter = 1.0f;
 				continue;
 			}
-			else if (infile.peek() == type)
+			
+			if ((x < gridWidth - 1) && (grid[index+1] == type)) // TODO: Bounds check
 			{
 				wall_counter++;
 				continue;
 			}
-			else if (type == 'x')
+			else if ((wall_counter == 1) && (y < gridHeight - 1) && (grid[index + gridWidth] == type))
+			{
+				column_counter = 0;
+				for (int i = index; i < grid.size(); i += gridWidth)
+				{
+					if (grid[i] == type)
+					{
+						column_counter++;
+						grid[i] = '.';
+						continue;
+					}
+
+					break;
+				}
+
+				pos.z += (nodeSize * (column_counter - 1)) / 2.0f;
+			}
+			
+			if (type == 'x')
 			{
 				// Wall
-				AddWallToWorld( position + pos, { (nodeSize * wall_counter) / 2.0f, 5, nodeSize / 2.0f } );
+				AddWallToWorld(position + pos, { (nodeSize * wall_counter) / 2.0f, 5, (nodeSize * column_counter) / 2.0f });
 
 			}
 			else if (type == 'R' || type == 'G' || type == 'B')
@@ -577,14 +610,12 @@ void CourseworkGameA::AddStructureFromFile(const Vector3& position, const std::s
 				}
 			}
 
+			column_counter = 1;
 			wall_counter = 1; // reset after building walls
 		}
 	}
-
-	infile.close();
-
-
 	AddExtrasFromFile(position, filename);
+	return;
 }
 
 void CourseworkGameA::AddExtrasFromFile(const Vector3& position, const std::string filename)
